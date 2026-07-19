@@ -1,7 +1,8 @@
 FROM node:24-alpine
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN apk add --no-cache git \
+  && npm ci --omit=dev
 COPY scripts ./scripts
 COPY services/context-materializer ./services/context-materializer
 USER node
