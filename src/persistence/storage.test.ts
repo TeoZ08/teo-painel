@@ -52,4 +52,12 @@ describe('workspace storage', () => {
     expect(() => loadWorkspace(storage)).toThrow('dados originais foram preservados')
     expect(storage.getItem(WORKSPACE_KEY)).toContain('not-an-array')
   })
+
+  it('rejects a structurally incomplete import before replacing the workspace', () => {
+    const storage = new MemoryStorage()
+    saveWorkspace(storage, createProject(createEmptyWorkspace(), { name: 'Preservado', currentSituation: 'Seguro' }))
+    const invalid = JSON.stringify({ format: 'teo-painel-export', exportedAt: '2026-07-18T12:00:00.000Z', workspace: { ...createEmptyWorkspace(), projects: [{ id: 'p' }] } })
+    expect(() => importWorkspace(storage, invalid)).toThrow('Projeto tem status inválido')
+    expect(loadWorkspace(storage).projects[0].name).toBe('Preservado')
+  })
 })

@@ -37,6 +37,14 @@ describe('technical project interface', () => {
     expect(await screen.findByText('O arquivo não contém JSON válido.')).toBeInTheDocument()
   })
 
+  it('does not hide a malformed local workspace behind an editable empty state', () => {
+    window.localStorage.setItem('teo-painel.workspace', '{bad data')
+    render(<App />)
+    expect(screen.getByRole('heading', { name: 'Os dados locais precisam de revisão.' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Baixar dados originais' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Criar projeto' })).not.toBeInTheDocument()
+  })
+
   it('records an advance and completes a next action from a project detail', async () => {
     const user = userEvent.setup()
     render(<App />)
