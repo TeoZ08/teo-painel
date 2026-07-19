@@ -26,6 +26,10 @@ npm run dev
 
 Abra o endereço exibido pelo Vite, normalmente `http://localhost:5173`.
 
+## GitHub Pages
+
+O workflow `.github/workflows/deploy-pages.yml` gera e publica esta aplicação no GitHub Pages quando há push na `main` ou na branch de reconstrução. A base do Vite já considera a URL de projeto `/teo-painel/`.
+
 ## Validações
 
 ```sh
