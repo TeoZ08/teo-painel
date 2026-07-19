@@ -1,0 +1,63 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 */6 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    env:
+      HAS_TEO_CONTEXTO_TOKEN: ${{ secrets.TEO_CONTEXTO_READ_TOKEN }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout painel
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Checkout private context source when authorized
+        if: ${{ env.HAS_TEO_CONTEXTO_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: TeoZ08/teo-contexto
+          ref: main
+          token: ${{ env.HAS_TEO_CONTEXTO_TOKEN }}
+          path: external/teo-contexto
+      - name: Build public fallback bundle
+        if: ${{ env.HAS_TEO_CONTEXTO_TOKEN != '' }}
+        run: npm run materialize:context -- --source external/teo-contexto --output public/fallback.bundle.json
+      - name: Require authorized context source for fallback
+        if: ${{ env.HAS_TEO_CONTEXTO_TOKEN == '' }}
+        run: |
+          echo 'A publicação requer TEO_CONTEXTO_READ_TOKEN para gerar fallback.bundle.json.' >&2
+          exit 1
+      - name: Build
+        run: npm run build
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
