@@ -4,17 +4,18 @@ import {
   type Project, type Workspace,
 } from '../domain/workspace'
 
-interface ProjectDetailProps { workspace: Workspace; project: Project; onCommit(workspace: Workspace, message: string): void; onClose(): void }
+interface ProjectDetailProps { workspace: Workspace; project: Project; onCommit(workspace: Workspace, message: string): void; onClose(): void; onOpenReport(): void }
 
-export function ProjectDetail({ workspace, project, onCommit, onClose }: ProjectDetailProps) {
+export function ProjectDetail({ workspace, project, onCommit, onClose, onOpenReport }: ProjectDetailProps) {
   const activeAction = workspace.nextActions.find((item) => item.projectId === project.id && !item.completedAt && !item.replacedAt)
   const records = <T extends { projectId: string }>(items: T[]) => items.filter((item) => item.projectId === project.id)
   const history = records(workspace.history).sort((a, b) => b.occurredOn.localeCompare(a.occurredOn))
+  const latestUpdate = [...records(workspace.progressUpdates)].sort((a, b) => b.occurredOn.localeCompare(a.occurredOn))[0]
   const commit = (next: Workspace, message: string) => onCommit(next, message)
 
   return <section className="project-detail" aria-labelledby="detail-title">
-    <div className="section-heading"><div><p className="eyebrow">Projeto aberto</p><h2 id="detail-title">{project.name}</h2></div><button className="secondary" onClick={onClose}>Fechar detalhe</button></div>
-    <p className="situation"><strong>Situação atual</strong>{project.currentSituation}</p>
+    <div className="section-heading"><div><p className="eyebrow">Projeto aberto</p><h2 id="detail-title">{project.name}</h2></div><div><button className="secondary" onClick={onOpenReport}>Gerar relatório</button><button className="secondary" onClick={onClose}>Fechar detalhe</button></div></div>
+    <div className="detail-summary"><p className="situation"><strong>Situação atual</strong>{project.currentSituation}</p><p className="last-update"><strong>Última atualização</strong>{latestUpdate ? `${formatDate(latestUpdate.occurredOn)} · ${latestUpdate.description}` : 'Ainda não há atualização registrada.'}</p></div>
     <section className="next-action"><h3>Próxima ação</h3>{activeAction ? <Item text={activeAction.description} action="Concluir" onAction={() => commit(completeNextAction(workspace, activeAction.id), 'Próxima ação concluída.')} editAction="Editar" onEdit={() => editText(activeAction.description, (description) => commit(updateNextAction(workspace, activeAction.id, { description }), 'Próxima ação atualizada.'))} /> : <p className="empty">Defina o próximo passo deste projeto.</p>}<TextForm label="Definir próxima ação" placeholder="Ex.: revisar os dados importados" submitLabel={activeAction ? 'Substituir ação' : 'Salvar ação'} onSubmit={(description) => commit(setNextAction(workspace, project.id, { description }), activeAction ? 'Próxima ação substituída.' : 'Próxima ação definida.')} /></section>
     <div className="detail-grid">
       <RecordSection title="Avanços" empty="Nenhum avanço registrado." items={records(workspace.progressUpdates)} render={(item) => <Item text={item.description} meta={formatDate(item.occurredOn)} />}><TextForm label="Registrar avanço" placeholder="O que avançou?" submitLabel="Registrar avanço" onSubmit={(description) => commit(addProgressUpdate(workspace, project.id, { description }), 'Avanço registrado.')} /></RecordSection>
