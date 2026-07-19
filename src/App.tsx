@@ -5,7 +5,7 @@ import { ReportPanel } from './components/ReportPanel'
 import { AppShell, type AppDestination } from './components/AppShell'
 import { BACKUP_KEY, WORKSPACE_KEY, exportWorkspace, importWorkspace, loadWorkspace, saveWorkspace } from './persistence/storage'
 import { changesetAsMarkdown } from './context-source/changeset'
-import { loadContextSnapshot } from './context-source/loadSnapshot'
+import { loadContextV2, toLegacySnapshot } from './context-source/v2'
 import { contextForLocalProject, mergeSnapshotIntoWorkspace } from './context-source/mergeWorkspace'
 import type { TeoContextSnapshot } from './context-source/types'
 
@@ -27,7 +27,7 @@ export function App() {
   const [showArchived, setShowArchived] = useState(false)
   const [message, setMessage] = useState('')
   const [snapshot, setSnapshot] = useState<TeoContextSnapshot | null>(null)
-  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'live' | 'cached' | 'unavailable'>('loading')
+  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'live' | 'cached' | 'fallback' | 'unavailable'>('loading')
   const [activeDestination, setActiveDestination] = useState<AppDestination>('overview')
   const importInput = useRef<HTMLInputElement>(null)
 
@@ -38,10 +38,11 @@ export function App() {
 
   useEffect(() => {
     let active = true
-    void loadContextSnapshot().then(({ snapshot: nextSnapshot, cached }) => {
+    void loadContextV2(window.localStorage).then(({ bundle, origin }) => {
       if (!active) return
+      const nextSnapshot = toLegacySnapshot(bundle)
       setSnapshot(nextSnapshot)
-      setSnapshotStatus(cached ? 'cached' : 'live')
+      setSnapshotStatus(origin === 'vps' ? 'live' : origin === 'cache' ? 'cached' : 'fallback')
       setWorkspace((previous) => {
         const merged = mergeSnapshotIntoWorkspace(previous, nextSnapshot)
         if (merged.projects.length !== previous.projects.length) saveWorkspace(window.localStorage, merged)
@@ -114,7 +115,7 @@ export function App() {
     <AppShell activeDestination={activeDestination} onDestinationChange={updateDestination}>
       <header className="app-header"><div><p className="eyebrow">teo-painel · contexto pessoal</p><h1>O que pede atenção agora?</h1></div><div className="header-actions">{workspace.projects.length > 0 && <button onClick={() => setShowQuickUpdate(true)}>Registrar atualização</button>}<button className={workspace.projects.length === 0 ? '' : 'secondary'} onClick={() => setEditing('new')}>Criar projeto</button></div></header>
       <p className="helper">Atualize o que avançou, deixe o próximo passo claro e consulte o restante quando precisar.</p>
-      {snapshotStatus !== 'loading' && <p className="context-status" role="status">{snapshotStatus === 'live' ? 'Contexto atualizado.' : snapshotStatus === 'cached' ? 'Usando cópia local do contexto.' : 'Contexto indisponível; seus registros locais continuam seguros.'}</p>}
+      {snapshotStatus !== 'loading' && <p className="context-status" role="status">{snapshotStatus === 'live' ? 'Contexto atualizado.' : snapshotStatus === 'cached' ? 'Usando cópia local do contexto.' : snapshotStatus === 'fallback' ? 'Usando o fallback integrado ao painel.' : 'Contexto indisponível; seus registros locais continuam seguros.'}</p>}
       {message && <p className="notice" role="status">{message}</p>}
       <input ref={importInput} aria-label="Selecionar arquivo para importar" type="file" accept="application/json" hidden onChange={(event) => void handleImport(event.target.files?.[0])} />
       {editing && <ProjectForm project={editing === 'new' ? null : editing} onSave={handleSave} onCancel={() => setEditing(null)} />}
