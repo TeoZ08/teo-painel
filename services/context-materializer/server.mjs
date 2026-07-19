@@ -26,5 +26,5 @@ createServer((request, response) => {
   if (request.method === 'GET' && request.url === '/health') return json(response, 200, { state: refreshing ? 'refreshing' : 'ready', lastResult })
   if (request.method !== 'POST' || request.url !== '/internal/refresh') return json(response, 404, { error: 'not_found' })
   if (request.headers.authorization !== `Bearer ${refreshToken}`) return json(response, 401, { error: 'unauthorized' })
-  try { return json(response, 200, refresh()) } catch (error) { return json(response, 500, { state: 'failed', error: error instanceof Error ? error.message : 'materialization_failed' }) }
+  try { return json(response, 200, refresh()) } catch { return json(response, 500, { state: 'failed', error: 'materialization_failed' }) }
 }).listen(port, '0.0.0.0', () => console.log(`context-materializer interno em :${port}`))

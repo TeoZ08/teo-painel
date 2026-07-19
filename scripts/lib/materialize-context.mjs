@@ -8,6 +8,10 @@ export const DATASET_SCHEMA_VERSION = 2
 const RECORD_TYPES = new Set(['project', 'subproject', 'artifact', 'initiative', 'legacy'])
 const STATUSES = new Set(['planned', 'active', 'paused', 'blocked', 'completed', 'archived'])
 const STAGES = new Set(['idea', 'research', 'prototype', 'mvp', 'release_candidate', 'production', 'maintenance', 'not_applicable'])
+const FORBIDDEN_FIELD = /(?:secret|token|password|authorization|cookie|credential|private.?key|encryption|database|sqlite|backup)/i
+const FORBIDDEN_VALUE = /(?:-----BEGIN|\bgh[pousr]_[A-Za-z0-9_]+\b|\bAIza[\w-]+\b|\bsk-[A-Za-z0-9_-]+\b)/
+const URL_PATTERN = /https?:\/\/[^\s)\]]+/gi
+const URL_TEST_PATTERN = /https?:\/\/[^\s)\]]+/i
 
 const runGit = (source, args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8' }).trim()
 const checksum = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -52,6 +56,7 @@ export const writeDatasetsAtomically = (target, result) => {
   rmSync(temporary, { recursive: true, force: true })
   mkdirSync(join(temporary, 'v1'), { recursive: true })
   const files = { manifest: result.manifest, ...result.datasets }
+  for (const [name, data] of Object.entries(files)) validatePublicArtifact(name, data)
   for (const [name, data] of Object.entries(files)) writeFileSync(join(temporary, 'v1', `${name}.json`), `${JSON.stringify(data, null, 2)}\n`)
   rmSync(target, { recursive: true, force: true })
   renameSync(temporary, target)
@@ -77,10 +82,10 @@ const parseProject = (path, content, commit, warnings) => {
     status: status ?? 'planned',
     stage: stage ?? 'not_applicable',
     priority: enumValue(attributes.priority, new Set(['low', 'medium', 'high']), null, path, 'priority', warnings),
-    summary: section(body, ['Resumo', 'Objetivo']) || null,
-    currentSituation: section(body, ['Situação atual', 'Status', 'Estado atual']) || null,
-    nextAction: text(attributes.next_action) || firstBullet(section(body, ['Próximos passos', 'Próxima ação', 'Próximos passos possíveis'])) || null,
-    blocker: text(attributes.blocker) || null,
+    summary: publicText(section(body, ['Resumo', 'Objetivo'])) || null,
+    currentSituation: publicText(section(body, ['Situação atual', 'Status', 'Estado atual'])) || null,
+    nextAction: publicText(text(attributes.next_action) || firstBullet(section(body, ['Próximos passos', 'Próxima ação', 'Próximos passos possíveis']))) || null,
+    blocker: publicText(text(attributes.blocker)) || null,
     repositories: repositories.map((name) => ({ name, role: null, trackActivity: true })),
     tags: uniqueStrings(array(attributes.tags)),
     reviewedAt: dateOrNull(attributes.reviewed_at),
@@ -93,7 +98,7 @@ const parseDaily = (path, content, commit, projects, warnings) => {
   const date = basename(path, '.md')
   const mentions = projects.filter((project) => new RegExp(`\\b${escapeRegExp(project.id)}\\b|\\b${escapeRegExp(project.name)}\\b`, 'i').test(content))
   if (/\b[A-Z][\w-]+\b/.test(content) && mentions.length === 0) warnings.push(warning(path, 'Diário sem associação inequívoca de projeto.'))
-  return { id: `daily:${date}`, date, title: heading(content) || null, highlights: bullets(content).slice(0, 8), decisions: [], pendingItems: [], projectIds: mentions.map((project) => project.id), source: sourceRef(path, commit) }
+  return { id: `daily:${date}`, date, title: publicText(heading(content)) || null, highlights: bullets(content).map(publicText).filter(Boolean).slice(0, 8), decisions: [], pendingItems: [], projectIds: mentions.map((project) => project.id), source: sourceRef(path, commit) }
 }
 
 const sourceMeta = (commit) => ({ repository: 'TeoZ08/teo-contexto', ref: 'main', commit })
@@ -113,6 +118,19 @@ const section = (body, names) => {
 const bullets = (body) => [...(body ?? '').matchAll(/^[-*]\s+(.+)$/gm)].map((match) => clean(match[1])).filter(Boolean)
 const firstBullet = (value) => bullets(value)[0] ?? null
 const clean = (value) => typeof value === 'string' ? value.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim() : ''
+export const publicText = (value) => clean(value).replace(URL_PATTERN, '[link removido]')
+export const validatePublicArtifact = (name, artifact) => {
+  const visit = (value, path = name) => {
+    if (typeof value === 'string' && (FORBIDDEN_VALUE.test(value) || URL_TEST_PATTERN.test(value))) throw new Error(`Artefato público recusado: valor sensível em ${path}.`)
+    if (Array.isArray(value)) value.forEach((item, index) => visit(item, `${path}[${index}]`))
+    if (value && typeof value === 'object') Object.entries(value).forEach(([key, item]) => {
+      if (FORBIDDEN_FIELD.test(key)) throw new Error(`Artefato público recusado: campo proibido em ${path}.${key}.`)
+      visit(item, `${path}.${key}`)
+    })
+  }
+  visit(artifact)
+  return artifact
+}
 const text = (value) => typeof value === 'string' && value.trim() ? value.trim() : ''
 const array = (value) => Array.isArray(value) ? value.filter((item) => typeof item === 'string').map((item) => item.trim()).filter(Boolean) : []
 const uniqueStrings = (items) => [...new Set(items)]
