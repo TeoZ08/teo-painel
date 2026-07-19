@@ -5,15 +5,27 @@ import { ReportPanel } from './components/ReportPanel'
 import { AppShell, type AppDestination } from './components/AppShell'
 import { BACKUP_KEY, WORKSPACE_KEY, exportWorkspace, importWorkspace, loadWorkspace, saveWorkspace } from './persistence/storage'
 import { changesetAsMarkdown } from './context-source/changeset'
-import { loadContextV2, toLegacySnapshot } from './context-source/v2'
+import { loadContextV2, toLegacySnapshot, type ContextBundleV2 } from './context-source/v2'
 import { contextForLocalProject, mergeSnapshotIntoWorkspace } from './context-source/mergeWorkspace'
 import type { TeoContextSnapshot } from './context-source/types'
 
 interface InitialWorkspaceState { workspace: Workspace; recoveryError: string | null }
+type SnapshotStatus = 'loading' | 'live' | 'cached' | 'fallback' | 'unavailable'
+type CanonicalDaily = { id: string; date: string; title: string | null; highlights: string[]; sourcePath: string | null }
+type CanonicalReview = { id: string; title: string | null; sourcePath: string | null }
+
+const object = (value: unknown): Record<string, unknown> | null => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+const text = (value: unknown): string | null => typeof value === 'string' && value.trim() ? value.trim() : null
+const stringList = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean) : []
+const canonicalDaily = (bundle: ContextBundleV2 | null): CanonicalDaily[] => (bundle?.daily.daily ?? []).flatMap((item) => { const value = object(item); if (!value) return []; const source = object(value.source); const date = text(value.date); if (!date) return []; return [{ id: text(value.id) ?? `daily:${date}`, date, title: text(value.title), highlights: stringList(value.highlights), sourcePath: text(source?.path), }] }).sort((a, b) => b.date.localeCompare(a.date))
+const canonicalReviews = (bundle: ContextBundleV2 | null): CanonicalReview[] => (bundle?.reviews.reviews ?? []).flatMap((item) => { const value = object(item); if (!value) return []; const source = object(value.source); return [{ id: text(value.id) ?? crypto.randomUUID(), title: text(value.title), sourcePath: text(source?.path) }] })
 
 const getInitialWorkspace = (): InitialWorkspaceState => {
-  try { return { workspace: loadWorkspace(window.localStorage), recoveryError: null } } catch (error) { return { workspace: createEmptyWorkspace(), recoveryError: error instanceof Error ? error.message : 'Não foi possível ler os dados locais.' } }
+  try { return { workspace: loadWorkspace(window.localStorage), recoveryError: null } }
+  catch (error) { return { workspace: createEmptyWorkspace(), recoveryError: error instanceof Error ? error.message : 'Não foi possível ler os dados locais.' } }
 }
+
+const projectAction = (workspace: Workspace, project: Project, snapshot: TeoContextSnapshot | null) => workspace.nextActions.find((item) => item.projectId === project.id && !item.completedAt && !item.replacedAt)?.description ?? contextForLocalProject(snapshot, project.id)?.canonicalNextAction ?? 'Definir o próximo passo'
 
 export function App() {
   const [initialWorkspace] = useState<InitialWorkspaceState>(getInitialWorkspace)
@@ -27,20 +39,19 @@ export function App() {
   const [showArchived, setShowArchived] = useState(false)
   const [message, setMessage] = useState('')
   const [snapshot, setSnapshot] = useState<TeoContextSnapshot | null>(null)
-  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'live' | 'cached' | 'fallback' | 'unavailable'>('loading')
+  const [contextBundle, setContextBundle] = useState<ContextBundleV2 | null>(null)
+  const [snapshotStatus, setSnapshotStatus] = useState<SnapshotStatus>('loading')
   const [activeDestination, setActiveDestination] = useState<AppDestination>('overview')
   const importInput = useRef<HTMLInputElement>(null)
 
-  const commit = (next: Workspace) => {
-    saveWorkspace(window.localStorage, next)
-    setWorkspace(next)
-  }
+  const commit = (next: Workspace) => { saveWorkspace(window.localStorage, next); setWorkspace(next) }
 
   useEffect(() => {
     let active = true
     void loadContextV2(window.localStorage).then(({ bundle, origin }) => {
       if (!active) return
       const nextSnapshot = toLegacySnapshot(bundle)
+      setContextBundle(bundle)
       setSnapshot(nextSnapshot)
       setSnapshotStatus(origin === 'vps' ? 'live' : origin === 'cache' ? 'cached' : 'fallback')
       setWorkspace((previous) => {
@@ -53,104 +64,67 @@ export function App() {
   }, [])
 
   const handleSave = (name: string, situation: string) => {
-    const isEditingExistingProject = editing !== null && editing !== 'new'
-    const next = isEditingExistingProject ? updateProject(workspace, editing.id, { name, currentSituation: situation }) : createProject(workspace, { name, currentSituation: situation })
-    commit(next)
-    setEditing(null)
-    setMessage(isEditingExistingProject ? 'Projeto atualizado.' : 'Projeto criado.')
+    const existing = editing !== null && editing !== 'new'
+    commit(existing ? updateProject(workspace, editing.id, { name, currentSituation: situation }) : createProject(workspace, { name, currentSituation: situation }))
+    setEditing(null); setMessage(existing ? 'Projeto atualizado.' : 'Projeto criado.')
   }
-
   const handleImport = async (file: File | undefined) => {
     if (!file) return
-    try {
-      commit(importWorkspace(window.localStorage, await file.text()))
-      setMessage('Dados importados. Uma cópia do estado anterior foi preservada localmente.')
-    } catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível importar o arquivo.') }
+    try { commit(importWorkspace(window.localStorage, await file.text())); setMessage('Dados importados. A cópia anterior permanece guardada neste navegador.') }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'Não foi possível importar o arquivo.') }
     finally { if (importInput.current) importInput.current.value = '' }
   }
-
-  const download = () => {
-    const blob = new Blob([exportWorkspace(workspace)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `teo-painel-${new Date().toISOString().slice(0, 10)}.json`
-    link.click()
-    URL.revokeObjectURL(url)
-    setMessage('Exportação preparada.')
-  }
-
-  const downloadChangeset = () => {
-    const blob = new Blob([changesetAsMarkdown(workspace, snapshot)], { type: 'text/markdown;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `teo-painel-changeset-${new Date().toISOString().slice(0, 10)}.md`
-    link.click()
-    URL.revokeObjectURL(url)
-    setMessage('Changeset local preparado para revisão; nenhuma alteração foi enviada ao repositório de contexto.')
-  }
-
+  const download = () => downloadBlob(exportWorkspace(workspace), `teo-painel-${new Date().toISOString().slice(0, 10)}.json`, 'application/json', () => setMessage('Exportação preparada.'))
+  const downloadChangeset = () => downloadBlob(changesetAsMarkdown(workspace, snapshot), `teo-painel-changeset-${new Date().toISOString().slice(0, 10)}.md`, 'text/markdown;charset=utf-8', () => setMessage('Changeset preparado para revisão humana. Nada foi enviado ao contexto.'))
   const selectedProject = workspace.projects.find((project) => project.id === selectedProjectId) ?? null
-  const visibleProjects = workspace.projects.filter((project) => (showArchived ? project.status === 'archived' : project.status === 'active') && project.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
-  const recentUpdates = [...workspace.progressUpdates].sort((a, b) => b.occurredOn.localeCompare(a.occurredOn)).slice(0, 5)
+  const visibleProjects = workspace.projects.filter((project) => (showArchived ? project.status === 'archived' : project.status !== 'archived') && project.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
+  const activeProjects = visibleProjects.filter((project) => project.status === 'active').sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   const activeBlockers = workspace.blockers.filter((blocker) => !blocker.resolvedAt)
+  const recentUpdates = [...workspace.progressUpdates].sort((a, b) => b.occurredOn.localeCompare(a.occurredOn)).slice(0, 5)
+  const urgentProject = activeBlockers[0] ? workspace.projects.find((project) => project.id === activeBlockers[0].projectId) : activeProjects.find((project) => projectAction(workspace, project, snapshot) !== 'Definir o próximo passo') ?? activeProjects[0]
 
-  if (recoveryError) return <RecoveryScreen error={recoveryError} onStartOver={() => { const raw = window.localStorage.getItem(WORKSPACE_KEY); if (raw !== null) window.localStorage.setItem(BACKUP_KEY, raw); const empty = createEmptyWorkspace(); saveWorkspace(window.localStorage, empty); setWorkspace(empty); setRecoveryError(null); setMessage('Um novo workspace foi iniciado. A cópia anterior ficou preservada localmente.') }} />
+  if (recoveryError) return <RecoveryScreen error={recoveryError} onStartOver={() => { const raw = window.localStorage.getItem(WORKSPACE_KEY); if (raw !== null) window.localStorage.setItem(BACKUP_KEY, raw); const empty = createEmptyWorkspace(); saveWorkspace(window.localStorage, empty); setWorkspace(empty); setRecoveryError(null) }} />
 
-  const updateDestination = (destination: AppDestination) => {
-    setActiveDestination(destination)
-    setSelectedProjectId(null)
-    setShowReport(false)
-  }
+  const updateDestination = (destination: AppDestination) => { setActiveDestination(destination); setSelectedProjectId(null); setShowReport(false); setEditing(null) }
+  const openProject = (projectId: string) => { setSelectedProjectId(projectId); setShowReport(false) }
 
-  const workspaceDataControls = <section className="data-panel" aria-labelledby="data-title">
-    <p className="eyebrow">Portabilidade local</p>
-    <h2 id="data-title">Dados</h2>
-    <p>Este workspace continua no navegador. Exporte uma cópia antes de trocar de dispositivo e use o changeset apenas para revisão humana.</p>
-    <div className="data-actions"><button className="secondary" onClick={download}>Exportar JSON</button><button className="secondary" onClick={downloadChangeset}>Baixar changeset</button><button className="secondary" onClick={() => importInput.current?.click()}>Importar JSON</button></div>
-  </section>
-
-  return (
-    <AppShell activeDestination={activeDestination} onDestinationChange={updateDestination}>
-      <header className="app-header"><div><p className="eyebrow">teo-painel · contexto pessoal</p><h1>O que pede atenção agora?</h1></div><div className="header-actions">{workspace.projects.length > 0 && <button onClick={() => setShowQuickUpdate(true)}>Registrar atualização</button>}<button className={workspace.projects.length === 0 ? '' : 'secondary'} onClick={() => setEditing('new')}>Criar projeto</button></div></header>
-      <p className="helper">Atualize o que avançou, deixe o próximo passo claro e consulte o restante quando precisar.</p>
-      {snapshotStatus !== 'loading' && <p className="context-status" role="status">{snapshotStatus === 'live' ? 'Contexto atualizado.' : snapshotStatus === 'cached' ? 'Usando cópia local do contexto.' : snapshotStatus === 'fallback' ? 'Usando o fallback integrado ao painel.' : 'Contexto indisponível; seus registros locais continuam seguros.'}</p>}
-      {message && <p className="notice" role="status">{message}</p>}
-      <input ref={importInput} aria-label="Selecionar arquivo para importar" type="file" accept="application/json" hidden onChange={(event) => void handleImport(event.target.files?.[0])} />
-      {editing && <ProjectForm project={editing === 'new' ? null : editing} onSave={handleSave} onCancel={() => setEditing(null)} />}
-      {showQuickUpdate && <QuickUpdate projects={workspace.projects.filter((project) => project.status === 'active')} onCancel={() => setShowQuickUpdate(false)} onSave={(projectId, description, nextAction) => { let next = addProgressUpdate(workspace, projectId, { description }); if (nextAction.trim()) next = setNextAction(next, projectId, { description: nextAction }); commit(next); setShowQuickUpdate(false); setSelectedProjectId(projectId); setMessage('Atualização registrada.') }} />}
-      {!selectedProject && activeDestination !== 'data' && <><section className="home-controls"><label>Buscar projeto<input value={search} placeholder="Buscar pelo nome" onChange={(event) => setSearch(event.target.value)} /></label><div><button className="secondary" onClick={() => setShowArchived(!showArchived)}>{showArchived ? 'Ver projetos ativos' : 'Ver arquivados'}</button>{activeDestination === 'overview' && <button className="secondary" onClick={() => setActiveDestination('data')}>Dados</button>}</div></section><div className="home-grid"><section aria-labelledby="project-list-title"><div className="section-heading"><div><p className="eyebrow">{activeDestination === 'daily' ? 'Registros locais' : activeDestination === 'reviews' ? 'Itens a decidir' : activeDestination === 'reports' ? 'Base para relatórios' : 'Em foco'}</p><h2 id="project-list-title">{activeDestination === 'daily' ? 'Projetos com atualizações' : activeDestination === 'reviews' ? 'Projetos com pendências' : showArchived ? 'Projetos arquivados' : 'Projetos'}</h2></div><span>{visibleProjects.length} visíveis</span></div>{visibleProjects.length === 0 ? workspace.projects.length === 0 ? <div className="empty-start"><p>Comece criando um projeto e registre o primeiro avanço quando ele acontecer.</p></div> : <p className="empty">Nenhum projeto encontrado.</p> : <ul className="project-list">{visibleProjects.map((project) => { const next = workspace.nextActions.find((item) => item.projectId === project.id && !item.completedAt && !item.replacedAt); const context = contextForLocalProject(snapshot, project.id); const update = workspace.progressUpdates.filter((item) => item.projectId === project.id).sort((a, b) => b.occurredOn.localeCompare(a.occurredOn))[0]; const blocker = activeBlockers.find((item) => item.projectId === project.id); return <li key={project.id}><article><div className="project-card-heading"><h3>{project.name}</h3><small>{project.status === 'active' ? 'Ativo' : 'Arquivado'}</small></div><p>{activeDestination === 'daily' && update ? update.description : activeDestination === 'reviews' && blocker ? `Bloqueio: ${blocker.description}` : project.currentSituation}</p><p className="next-label">Próxima ação <strong>{next?.description ?? context?.canonicalNextAction ?? 'Ainda não definida'}</strong></p>{context?.source.url && <a className="source-link" href={context.source.url} target="_blank" rel="noreferrer">Ver fonte de contexto</a>}<div><button className="secondary" onClick={() => setSelectedProjectId(project.id)}>Abrir</button><button className="secondary" onClick={() => setEditing(project)}>Editar</button><button className="secondary" onClick={() => { commit(setProjectStatus(workspace, project.id, project.status === 'active' ? 'archived' : 'active')); setMessage(project.status === 'active' ? 'Projeto arquivado.' : 'Projeto reativado.') }}>{project.status === 'active' ? 'Arquivar' : 'Reativar'}</button><button className="danger" onClick={() => { if (window.confirm(`Excluir “${project.name}”? Esta ação remove os registros ligados a ele.`)) { commit(deleteProject(workspace, project.id)); setMessage('Projeto excluído.') } }}>Excluir</button></div></article></li> })}</ul>}</section><aside className="home-aside"><section><h2>Atualizações recentes</h2>{recentUpdates.length ? <ul className="compact-list">{recentUpdates.map((item) => <li key={item.id}><strong>{workspace.projects.find((project) => project.id === item.projectId)?.name ?? 'Projeto removido'}</strong><span>{item.description}</span></li>)}</ul> : <p className="empty">Nenhuma atualização registrada.</p>}</section><section><h2>Bloqueios ativos</h2>{activeBlockers.length ? <ul className="compact-list blockers">{activeBlockers.map((item) => <li key={item.id}>{item.description}</li>)}</ul> : <p className="empty">Nenhum bloqueio ativo.</p>}</section></aside></div></>}
-      {!selectedProject && activeDestination === 'data' && workspaceDataControls}
-      {selectedProject && (showReport ? <ReportPanel workspace={workspace} project={selectedProject} onClose={() => setShowReport(false)} /> : <ProjectDetail workspace={workspace} project={selectedProject} context={contextForLocalProject(snapshot, selectedProject.id)} onClose={() => setSelectedProjectId(null)} onOpenReport={() => setShowReport(true)} onCommit={(next, nextMessage) => { commit(next); setMessage(nextMessage) }} />)}
-    </AppShell>
-  )
+  return <AppShell activeDestination={activeDestination} onDestinationChange={updateDestination} sourceState={snapshotStatus} onQuickUpdate={() => setShowQuickUpdate(true)}>
+    <input ref={importInput} aria-label="Selecionar arquivo para importar" type="file" accept="application/json" hidden onChange={(event) => void handleImport(event.target.files?.[0])} />
+    {message && <p className="notice" role="status">{message}</p>}
+    {editing && <ProjectForm project={editing === 'new' ? null : editing} onSave={handleSave} onCancel={() => setEditing(null)} />}
+    {showQuickUpdate && <QuickUpdate projects={workspace.projects.filter((project) => project.status === 'active')} onCancel={() => setShowQuickUpdate(false)} onSave={(projectId, description, nextAction) => { let next = addProgressUpdate(workspace, projectId, { description }); if (nextAction.trim()) next = setNextAction(next, projectId, { description: nextAction }); commit(next); setShowQuickUpdate(false); setSelectedProjectId(projectId); setMessage('Atualização registrada.') }} />}
+    {selectedProject ? (showReport ? <ReportPanel workspace={workspace} project={selectedProject} onClose={() => setShowReport(false)} /> : <ProjectDetail workspace={workspace} project={selectedProject} context={contextForLocalProject(snapshot, selectedProject.id)} onClose={() => setSelectedProjectId(null)} onOpenReport={() => setShowReport(true)} onCommit={(next, nextMessage) => { commit(next); setMessage(nextMessage) }} />) : <>
+      {activeDestination === 'overview' && <Overview workspace={workspace} snapshot={snapshot} urgentProject={urgentProject} activeProjects={activeProjects} activeBlockers={activeBlockers} recentUpdates={recentUpdates} onOpenProject={openProject} />}
+      {activeDestination === 'projects' && <Projects workspace={workspace} snapshot={snapshot} projects={visibleProjects} search={search} archived={showArchived} onSearch={setSearch} onToggleArchived={() => setShowArchived(!showArchived)} onCreate={() => setEditing('new')} onOpen={openProject} onEdit={setEditing} onArchive={(project) => { commit(setProjectStatus(workspace, project.id, project.status === 'archived' ? 'active' : 'archived')); setMessage(project.status === 'archived' ? 'Projeto reativado.' : 'Projeto arquivado.') }} onDelete={(project) => { if (window.confirm(`Excluir “${project.name}”? Os registros locais ligados a ele também serão removidos.`)) { commit(deleteProject(workspace, project.id)); setMessage('Projeto excluído.') } }} />}
+      {activeDestination === 'daily' && <Daily workspace={workspace} contextDaily={canonicalDaily(contextBundle)} onOpenProject={openProject} />}
+      {activeDestination === 'reviews' && <Reviews workspace={workspace} snapshot={snapshot} contextReviews={canonicalReviews(contextBundle)} onOpenProject={openProject} />}
+      {activeDestination === 'reports' && <Reports workspace={workspace} onOpenProject={openProject} />}
+      {activeDestination === 'data' && <DataScreen snapshot={snapshot} status={snapshotStatus} onExport={download} onChangeset={downloadChangeset} onImport={() => importInput.current?.click()} />}
+    </>}
+  </AppShell>
 }
 
-function RecoveryScreen({ error, onStartOver }: { error: string; onStartOver(): void }) {
-  const downloadRaw = () => { const raw = window.localStorage.getItem(WORKSPACE_KEY); if (!raw) return; const blob = new Blob([raw], { type: 'application/json' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'teo-painel-dados-recuperacao.json'; link.click(); URL.revokeObjectURL(url) }
-  return <main className="app-shell recovery"><p className="eyebrow">Recuperação de dados</p><h1>Os dados locais precisam de revisão.</h1><p>O painel não gravará nada sobre eles até você decidir o que fazer. Baixe a cópia original para guardar ou tentar corrigir antes de iniciar um workspace vazio.</p><p className="form-error" role="alert">{error}</p><div><button onClick={downloadRaw}>Baixar dados originais</button><button className="secondary" onClick={() => { if (window.confirm('Iniciar um workspace vazio? A cópia original continuará guardada localmente como backup.')) onStartOver() }}>Iniciar workspace vazio</button></div></main>
+function Overview({ workspace, snapshot, urgentProject, activeProjects, activeBlockers, recentUpdates, onOpenProject }: { workspace: Workspace; snapshot: TeoContextSnapshot | null; urgentProject: Project | undefined; activeProjects: Project[]; activeBlockers: Workspace['blockers']; recentUpdates: Workspace['progressUpdates']; onOpenProject(projectId: string): void }) {
+  return <><header className="page-intro"><div><p className="eyebrow">Visão geral</p><h1>Decida o que move o trabalho.</h1></div><p>Uma leitura curta do contexto consolidado e do que você registrou localmente.</p></header><div className="overview-grid"><section><section className="now-panel" aria-labelledby="now-title"><p className="eyebrow">Agora</p><h2 id="now-title">{urgentProject ? urgentProject.name : 'Abra espaço para o próximo projeto.'}</h2><p className="action-line"><span className="action-index">01</span><span>{urgentProject ? projectAction(workspace, urgentProject, snapshot) : 'Crie um projeto quando houver algo que mereça acompanhamento.'}</span></p></section><section className="project-river" aria-labelledby="focus-title"><div className="river-head"><div><p className="section-kicker">Em foco</p><h2 id="focus-title">Projetos que pedem continuidade</h2></div><span className="river-count">{activeProjects.length.toString().padStart(2, '0')} ativos</span></div><ol>{activeProjects.slice(0, 6).map((project, index) => <li className="project-strip" key={project.id}><span className="project-number">{String(index + 1).padStart(2, '0')}</span><button className="project-name" onClick={() => onOpenProject(project.id)}>{project.name}<span className="project-type">{contextForLocalProject(snapshot, project.id) ? 'Consolidado + local' : 'Registro local'}</span></button><p className="project-next"><span>Próxima ação</span>{projectAction(workspace, project, snapshot)}</p><span className="project-stage">{contextForLocalProject(snapshot, project.id)?.stage ?? 'em curso'}</span></li>)}</ol>{activeProjects.length === 0 && <p className="quiet-empty">Ainda não há projetos ativos. Comece registrando um contexto que mereça continuidade.</p>}</section></section><aside className="side-stack"><section className={activeBlockers.length ? 'side-section is-alert' : 'side-section'}><p className="section-kicker">Atenção</p><h2 className="side-title">Bloqueios</h2>{activeBlockers.length ? <ul className="event-list">{activeBlockers.slice(0, 4).map((blocker) => <li key={blocker.id}><strong>{workspace.projects.find((project) => project.id === blocker.projectId)?.name ?? 'Projeto removido'}</strong><span>{blocker.description}</span></li>)}</ul> : <p className="quiet-empty">Nenhum bloqueio aberto agora.</p>}</section><section className="side-section"><p className="section-kicker">Movimento</p><h2 className="side-title">Últimas atualizações</h2>{recentUpdates.length ? <ul className="event-list">{recentUpdates.slice(0, 4).map((update) => <li key={update.id}><strong>{workspace.projects.find((project) => project.id === update.projectId)?.name ?? 'Projeto removido'}</strong><span>{update.description}</span><time>{formatDate(update.occurredOn)}</time></li>)}</ul> : <p className="quiet-empty">Quando você registrar um avanço, ele aparece aqui.</p>}</section></aside></div></>
 }
 
-function QuickUpdate({ projects, onCancel, onSave }: { projects: Project[]; onCancel(): void; onSave(projectId: string, description: string, nextAction: string): void }) {
-  const [projectId, setProjectId] = useState(projects[0]?.id ?? '')
-  const [description, setDescription] = useState('')
-  const [nextAction, setNextAction] = useState('')
-  const [error, setError] = useState('')
-  return <form className="quick-update" onSubmit={(event) => { event.preventDefault(); try { onSave(projectId, description, nextAction) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Não foi possível registrar.') } }}><div><p className="eyebrow">Registro rápido</p><h2>Registrar atualização</h2></div><label>Projeto<select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label>O que avançou?<textarea autoFocus value={description} onChange={(event) => setDescription(event.target.value)} /></label><label>Próxima ação <span>Opcional — substitui a atual.</span><input value={nextAction} onChange={(event) => setNextAction(event.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<div><button type="submit" disabled={projects.length === 0}>Salvar atualização</button><button type="button" className="secondary" onClick={onCancel}>Cancelar</button></div></form>
+function Projects({ workspace, snapshot, projects, search, archived, onSearch, onToggleArchived, onCreate, onOpen, onEdit, onArchive, onDelete }: { workspace: Workspace; snapshot: TeoContextSnapshot | null; projects: Project[]; search: string; archived: boolean; onSearch(value: string): void; onToggleArchived(): void; onCreate(): void; onOpen(id: string): void; onEdit(project: Project): void; onArchive(project: Project): void; onDelete(project: Project): void }) {
+  return <><header className="destination-head"><div><p className="eyebrow">Índice de trabalho</p><h1>Projetos</h1></div><p>O contexto consolidado orienta. Seus registros locais preservam o que aconteceu enquanto o trabalho avançava.</p></header><div className="project-controls"><label className="project-search">Encontrar projeto<input value={search} placeholder="Nome, contexto ou iniciativa" onChange={(event) => onSearch(event.target.value)} /></label><div className="intro-actions"><button className="button-quiet" onClick={onToggleArchived}>{archived ? 'Ver ativos' : 'Ver arquivados'}</button><button className="action-primary" onClick={onCreate}>+ Criar projeto</button></div></div><ol className="project-index">{projects.map((project, index) => { const context = contextForLocalProject(snapshot, project.id); const blocker = workspace.blockers.find((item) => item.projectId === project.id && !item.resolvedAt); const state = blocker ? 'blocked' : context ? 'context' : 'local'; return <li className={`project-index-item is-${state}`} key={project.id}><span className="project-number">{String(index + 1).padStart(2, '0')}</span><button className="project-name" onClick={() => onOpen(project.id)}>{project.name}<span className="project-type">{context ? 'Consolidado' : 'Local'}</span></button><p className="item-summary">{blocker ? blocker.description : projectAction(workspace, project, snapshot)}</p><div className="item-state"><span className={`state-chip is-${state}`}>{blocker ? 'Bloqueado' : context ? 'Contexto + overlay' : 'Somente local'}</span><span>{context?.stage ?? project.status}</span></div><details className="project-more"><summary aria-label={`Mais ações para ${project.name}`}>···</summary><menu><button onClick={() => onOpen(project.id)}>Abrir projeto</button><button onClick={() => onEdit(project)}>Editar</button><button onClick={() => onArchive(project)}>{project.status === 'archived' ? 'Reativar' : 'Arquivar'}</button><button className="button-danger" onClick={() => onDelete(project)}>Excluir</button></menu></details></li> })}</ol>{projects.length === 0 && <p className="quiet-empty">Nenhum projeto corresponde a essa leitura. Tente outro nome ou crie um registro local.</p>}</>
 }
 
-interface ProjectFormProps { project: Project | null; onSave(name: string, situation: string): void; onCancel(): void }
+function Daily({ workspace, contextDaily, onOpenProject }: { workspace: Workspace; contextDaily: CanonicalDaily[]; onOpenProject(projectId: string): void }) { const updates = [...workspace.progressUpdates].sort((a, b) => b.occurredOn.localeCompare(a.occurredOn)); return <><header className="destination-head"><div><p className="eyebrow">Registro de contexto</p><h1>Diário</h1></div><p>O que já foi consolidado aparece separado do que você registrou localmente.</p></header>{contextDaily.length > 0 && <section className="detail-block"><p className="section-kicker">Consolidado</p><h2>Contexto materializado</h2><ol className="timeline">{contextDaily.map((entry) => <li key={entry.id}><time>{formatDate(entry.date)}</time><div className="timeline-entry"><strong>{entry.title ?? 'Resumo diário'}</strong>{entry.highlights.length ? entry.highlights.join(' · ') : 'Sem destaques públicos registrados.'}{entry.sourcePath && <span className="event-meta">{entry.sourcePath}</span>}</div></li>)}</ol></section>}{updates.length ? <section className="detail-block"><p className="section-kicker">Local</p><h2>Seu rastro de trabalho</h2><ol className="timeline">{updates.map((update) => <li key={update.id}><time>{formatDate(update.occurredOn)}</time><div className="timeline-entry"><strong><button className="project-name" onClick={() => onOpenProject(update.projectId)}>{workspace.projects.find((project) => project.id === update.projectId)?.name ?? 'Projeto removido'}</button></strong>{update.description}</div></li>)}</ol></section> : <p className="quiet-empty">Registre um avanço para começar uma linha do tempo local.</p>}</> }
 
-function ProjectForm({ project, onSave, onCancel }: ProjectFormProps) {
-  const [name, setName] = useState(project?.name ?? '')
-  const [situation, setSituation] = useState(project?.currentSituation ?? '')
-  const [error, setError] = useState('')
-  return <form className="project-form" onSubmit={(event) => { event.preventDefault(); try { onSave(name, situation) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Não foi possível salvar.') } }}>
-    <h2>{project ? 'Editar projeto' : 'Criar projeto'}</h2>
-    <label>Nome do projeto<input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label>
-    <label>Situação atual<textarea value={situation} onChange={(event) => setSituation(event.target.value)} /></label>
-    {error && <p className="form-error" role="alert">{error}</p>}
-    <div><button type="submit">Salvar</button><button type="button" className="secondary" onClick={onCancel}>Cancelar</button></div>
-  </form>
-}
+function Reviews({ workspace, snapshot, contextReviews, onOpenProject }: { workspace: Workspace; snapshot: TeoContextSnapshot | null; contextReviews: CanonicalReview[]; onOpenProject(projectId: string): void }) { const items = workspace.projects.filter((project) => project.status === 'active').map((project) => ({ project, blocker: workspace.blockers.find((item) => item.projectId === project.id && !item.resolvedAt), action: projectAction(workspace, project, snapshot) })).filter((item) => item.blocker || item.action === 'Definir o próximo passo'); return <><header className="destination-head"><div><p className="eyebrow">Fila de atenção</p><h1>Revisões</h1></div><p>Itens que precisam de uma decisão, um próximo passo ou a remoção de um impedimento.</p></header>{contextReviews.length > 0 && <section className="detail-block"><p className="section-kicker">Consolidado</p><h2>Handoffs e revisões disponíveis</h2><div className="review-queue">{contextReviews.map((review) => <article className="review-row" key={review.id}><span className="review-signal" aria-hidden="true" /><div><h2>{review.title ?? 'Revisão consolidada'}</h2><p>{review.sourcePath ?? 'Fonte de contexto sem caminho público.'}</p></div></article>)}</div></section>}<section className="detail-block"><p className="section-kicker">Local</p><h2>O que pede decisão</h2><div className="review-queue">{items.map(({ project, blocker, action }) => <article className="review-row" key={project.id}><span className="review-signal" aria-hidden="true" /><div><h2>{project.name}</h2><p>{blocker ? `Bloqueio: ${blocker.description}` : action}</p></div><button className="button-quiet" onClick={() => onOpenProject(project.id)}>Revisar</button></article>)}{items.length === 0 && <p className="quiet-empty">Nada urgente para revisar. Continue registrando o que mudou para manter esse estado confiável.</p>}</div></section></> }
+
+function Reports({ workspace, onOpenProject }: { workspace: Workspace; onOpenProject(projectId: string): void }) { return <><header className="destination-head"><div><p className="eyebrow">Síntese</p><h1>Relatórios</h1></div><p>Escolha um projeto para transformar o histórico local em um resumo revisável.</p></header><div className="review-queue">{workspace.projects.filter((project) => project.status !== 'archived').map((project) => <article className="review-row" key={project.id}><span className="review-signal" aria-hidden="true" /><div><h2>{project.name}</h2><p>{workspace.history.filter((event) => event.projectId === project.id).length} registros locais disponíveis para síntese.</p></div><button className="button-quiet" onClick={() => onOpenProject(project.id)}>Abrir</button></article>)}</div></> }
+
+function DataScreen({ snapshot, status, onExport, onChangeset, onImport }: { snapshot: TeoContextSnapshot | null; status: SnapshotStatus; onExport(): void; onChangeset(): void; onImport(): void }) { return <><header className="destination-head"><div><p className="eyebrow">Proveniência</p><h1>Dados</h1></div><p>O painel lê contexto público e preserva o seu trabalho local no navegador.</p></header><dl className="data-atlas"><div className="data-cell"><dt>Origem atual</dt><dd>{status === 'live' ? 'VPS — contexto atualizado' : status === 'cached' ? 'Cache validado do navegador' : status === 'fallback' ? 'Fallback integrado ao Pages' : status === 'loading' ? 'Consultando contexto' : 'Somente registros locais'}</dd></div><div className="data-cell"><dt>Commit do contexto</dt><dd className="mono">{snapshot?.source.commit ?? 'Ainda não disponível'}</dd></div><div className="data-cell"><dt>Registros consolidados</dt><dd>{snapshot?.projects.length ?? 0} projetos ou iniciativas disponíveis.</dd></div><div className="data-cell"><dt>Persistência</dt><dd>Overlay, avanços, pendências e decisões permanecem neste navegador.</dd></div><div className="data-cell"><dt>Changeset</dt><dd>Uma proposta baixável para revisão humana; nunca escreve automaticamente no contexto.</dd></div><div className="data-cell"><dt>Recuperação</dt><dd>Exportar antes de trocar de dispositivo mantém uma cópia independente.</dd></div></dl><div className="data-actions"><button className="action-primary" onClick={onExport}>Exportar JSON</button><button className="button-quiet" onClick={onChangeset}>Baixar changeset</button><button className="button-quiet" onClick={onImport}>Importar JSON</button></div></> }
+
+function RecoveryScreen({ error, onStartOver }: { error: string; onStartOver(): void }) { const downloadRaw = () => { const raw = window.localStorage.getItem(WORKSPACE_KEY); if (!raw) return; downloadBlob(raw, 'teo-painel-dados-recuperacao.json', 'application/json') }; return <main className="recovery"><p className="eyebrow">Recuperação de dados</p><h1>Os dados locais precisam de revisão.</h1><p>O painel não gravará sobre eles até você decidir. Baixe a cópia original antes de começar de novo.</p><p className="form-error" role="alert">{error}</p><div><button className="action-primary" onClick={downloadRaw}>Baixar cópia original</button><button className="button-quiet" onClick={() => { if (window.confirm('Iniciar um workspace vazio? A cópia original continuará guardada localmente como backup.')) onStartOver() }}>Iniciar workspace vazio</button></div></main> }
+
+function QuickUpdate({ projects, onCancel, onSave }: { projects: Project[]; onCancel(): void; onSave(projectId: string, description: string, nextAction: string): void }) { const [projectId, setProjectId] = useState(projects[0]?.id ?? ''); const [description, setDescription] = useState(''); const [nextAction, setNextAction] = useState(''); const [error, setError] = useState(''); return <form className="quick-update" onSubmit={(event) => { event.preventDefault(); try { onSave(projectId, description, nextAction) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Não foi possível registrar a atualização.') } }}><div><p className="eyebrow">Registro local</p><h2>O que mudou?</h2></div><label className="form-field">Projeto<select value={projectId} onChange={(event) => setProjectId(event.target.value)}>{projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><label className="form-field">Avanço<input autoFocus value={description} placeholder="Descreva o que saiu do lugar" onChange={(event) => setDescription(event.target.value)} /></label><label className="form-field">Próximo passo <span>Opcional — substitui a ação atual.</span><input value={nextAction} placeholder="O que precisa acontecer depois?" onChange={(event) => setNextAction(event.target.value)} /></label>{error && <p role="alert" className="form-error">{error}</p>}<div><button type="submit" disabled={projects.length === 0}>Registrar atualização</button><button type="button" className="button-quiet" onClick={onCancel}>Cancelar</button></div></form> }
+
+function ProjectForm({ project, onSave, onCancel }: { project: Project | null; onSave(name: string, situation: string): void; onCancel(): void }) { const [name, setName] = useState(project?.name ?? ''); const [situation, setSituation] = useState(project?.currentSituation ?? ''); const [error, setError] = useState(''); return <form className="project-form" onSubmit={(event) => { event.preventDefault(); try { onSave(name, situation) } catch (reason) { setError(reason instanceof Error ? reason.message : 'Não foi possível salvar o projeto.') } }}><div><p className="eyebrow">{project ? 'Ajustar registro' : 'Novo contexto'}</p><h2>{project ? 'Editar projeto' : 'Criar projeto'}</h2></div><label className="form-field">Nome do projeto<input autoFocus value={name} onChange={(event) => setName(event.target.value)} /></label><label className="form-field">Situação atual<textarea value={situation} placeholder="Qual é a leitura mais útil agora?" onChange={(event) => setSituation(event.target.value)} /></label>{error && <p className="form-error" role="alert">{error}</p>}<div><button type="submit">Salvar projeto</button><button type="button" className="button-quiet" onClick={onCancel}>Cancelar</button></div></form> }
+
+function formatDate(value: string): string { return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short' }).format(new Date(value)) }
+function downloadBlob(value: string, name: string, type: string, done?: () => void) { const blob = new Blob([value], { type }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url); done?.() }
