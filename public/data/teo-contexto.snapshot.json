@@ -1,0 +1,255 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-19T02:58:29.831Z",
+  "source": {
+    "repository": "TeoZ08/teo-contexto",
+    "ref": "main",
+    "commit": "b520ea235ff3b997aab0850705a2349e0514a71e"
+  },
+  "projects": [
+    {
+      "id": "aquaia-edital-hackathon",
+      "name": "AquaIA - Leitura Estratégica do Edital do Hackathon",
+      "aliases": [],
+      "summary": "Sem resumo registrado.",
+      "currentSituation": "Sem situação atual registrada.",
+      "officialStatus": "unclassified",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/aquaia-edital-hackathon.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "aquaia",
+      "name": "AquaIA UFMS",
+      "aliases": [],
+      "summary": "Projeto iniciado para o Hackathon do Núcleo de Formação Cidadã da UFMS. O hackathon ainda não aconteceu; o projeto está em fase inicial de desenvolvimento e refinamento.",
+      "currentSituation": "Projeto ativo.",
+      "officialStatus": "active",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": "Incorporar o edital na estratégia do projeto.",
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [
+        {
+          "name": "TeoZ08/aquaia-ufms",
+          "role": null,
+          "trackActivity": true
+        }
+      ],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/aquaia.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "guincho-10",
+      "name": "Guincho 10",
+      "aliases": [],
+      "summary": "Projeto antigo, mas relevante por ter sido uma venda.",
+      "currentSituation": "Sem situação atual registrada.",
+      "officialStatus": "unclassified",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/guincho-10.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "jarvis-academico",
+      "name": "Jarvis Acadêmico",
+      "aliases": [],
+      "summary": "Assistente acadêmico com IA, RAG, ferramentas e avaliação. Projeto voltado para consulta de materiais acadêmicos, apoio a estudos e demonstração técnica.",
+      "currentSituation": "Sem situação atual registrada.",
+      "officialStatus": "unclassified",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/jarvis-academico.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "unapi",
+      "name": "Portal UnAPI",
+      "aliases": [],
+      "summary": "Projeto ligado à extensão UnAPI. Portal estático para apoiar oficinas de informática, reunindo página inicial, ferramentas práticas, galeria de vídeos e atividades interativas de teclado e mouse.",
+      "currentSituation": "Sem situação atual registrada.",
+      "officialStatus": "unclassified",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [
+        {
+          "name": "TeoZ08/homeUnapi",
+          "role": null,
+          "trackActivity": true
+        }
+      ],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/unapi.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "portfolio",
+      "name": "Portfólio",
+      "aliases": [],
+      "summary": "Portfólio pessoal atual, publicado pelo repositório `MeuSitePortfolio`, voltado para apresentar evolução acadêmica, projetos e capacidade técnica.",
+      "currentSituation": "Este é o portfólio atual.",
+      "officialStatus": "unclassified",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [
+        {
+          "name": "TeoZ08/MeuSitePortfolio",
+          "role": null,
+          "trackActivity": true
+        }
+      ],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/portfolio.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "app-captura-contexto-gemini",
+      "name": "Projeto futuro - Teo Capture / App de Captura de Contexto",
+      "aliases": [],
+      "summary": "Aplicação mobile-first/PWA para capturar informações rápidas e transformar essas entradas em sugestões estruturadas para o repositório `teo-contexto`.",
+      "currentSituation": "Sem situação atual registrada.",
+      "officialStatus": "unclassified",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/app-captura-contexto-gemini.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "resumidor-videos",
+      "name": "ResumidorVideos",
+      "aliases": [],
+      "summary": "Ferramenta IA para resumir videos do YouTube usando Gemini. O projeto possui CLI, backend FastAPI, frontend React/Vite, cache em SQLite e exportacao Markdown.",
+      "currentSituation": "Projeto ativo como ferramenta IA.",
+      "officialStatus": "active",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [
+        {
+          "name": "TeoZ08/ResumidorVideos",
+          "role": null,
+          "trackActivity": true
+        },
+        {
+          "name": "TeoZ08/ResumidorVideos",
+          "role": null,
+          "trackActivity": true
+        }
+      ],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/resumidor-videos.md",
+        "url": null,
+        "updatedAt": null
+      }
+    },
+    {
+      "id": "useart",
+      "name": "useART",
+      "aliases": [],
+      "summary": "Projeto de e-commerce/loja virtual para apresentação real ao dono, com foco em produto funcional e visual profissional.",
+      "currentSituation": "Projeto ativo.",
+      "officialStatus": "active",
+      "stage": null,
+      "priority": null,
+      "canonicalNextAction": null,
+      "canonicalBlocker": null,
+      "tags": [],
+      "repositories": [
+        {
+          "name": "TeoZ08/useART",
+          "role": null,
+          "trackActivity": true
+        }
+      ],
+      "reviewedAt": null,
+      "nextReviewAt": null,
+      "recentActivity": [],
+      "decisions": [],
+      "source": {
+        "path": "projetos/useart.md",
+        "url": null,
+        "updatedAt": null
+      }
+    }
+  ],
+  "unmappedMentions": [],
+  "warnings": []
+}

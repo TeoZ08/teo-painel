@@ -1,35 +1,18 @@
 # MVP — teo-painel
 
-## Funcionalidades
+## Entregas
 
-- Criar, editar, arquivar, reativar e excluir projetos com confirmação.
-- Registrar avanços, próximas ações, pendências, decisões, bloqueios e marcos.
-- Concluir ou resolver itens e preservar os eventos no histórico.
-- Gerar relatório curto por período, copiar Markdown, baixar `.md` e imprimir.
-- Exportar e importar todo o workspace em JSON validado.
-
-## Fluxos
-
-1. Criar projeto → informar nome e situação atual breve → abrir detalhe.
-2. Registrar atualização → escolher projeto → escrever avanço → manter ou atualizar próxima ação.
-3. Concluir ou resolver um item → gerar evento de histórico.
-4. Selecionar projeto e período → revisar, copiar, baixar ou imprimir relatório.
-5. Exportar JSON → importar somente após validação e backup local.
+- Snapshot estático, versionado e sanitizado de projetos em `teo-contexto/main`.
+- Merge idempotente do snapshot com workspace local, preservando dados locais e cache offline.
+- Projetos, avanços, próximas ações, pendências, decisões, bloqueios, marcos, histórico, relatório e backup local.
+- Changeset Markdown somente para revisão humana.
+- Interface responsiva de atmosfera mineral, com estrutura compacta inspirada na referência de dashboard.
 
 ## Critérios de aceite
 
-- O projeto continua disponível após recarregar.
-- Avanços, decisões, conclusões e resoluções aparecem no histórico.
-- A próxima ação é legível sem abrir áreas secundárias.
-- Exclusão exige confirmação; importação inválida não altera os dados existentes.
-- Exportações têm versão de schema e são reimportáveis de modo validado.
-- Relatórios não incluem IDs, dados técnicos ou conclusões inventadas.
-- A tarefa principal funciona em 390 px e por teclado.
-
-## Estados vazios e mobile
-
-Sem projetos, destacar somente `Criar projeto`. Sem próxima ação, convidar o registro sem indicar erro. Sem eventos no período, preservar o seletor. Em mobile, ação principal, situação e próxima ação precedem a navegação secundária e formulários usam toda a largura.
-
-## Fora do escopo
-
-GitHub, n8n, `teo-contexto`, backend, banco remoto, login, colaboração, sincronização automática, IA e deploy.
+- O painel funciona sem rede depois de ter carregado um snapshot válido.
+- Snapshot novo não apaga registros locais, nem duplica projetos importados.
+- O browser não contém credencial nem chama a API do GitHub.
+- A próxima ação local prevalece; sem ela, a sugestão canônica é claramente rotulada.
+- Importação inválida não modifica o workspace e exclusão exige confirmação.
+- O fluxo principal funciona por teclado e em 390 px.

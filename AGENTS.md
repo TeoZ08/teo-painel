@@ -1,24 +1,18 @@
 # AGENTS.md — teo-painel
 
-## Produto
+## Produto e prioridade
 
-Este repositório contém um painel pessoal e interativo para Matteo acompanhar projetos. A tarefa principal é registrar avanços, organizar próximas ações e gerar uma visão curta e confiável do estado de cada projeto.
+Este é o painel pessoal de Matteo para decidir o próximo passo e registrar atualizações. Em conflito, siga `docs/PRODUCT.md`, `docs/MVP.md`, a referência em `docs/references/`, `.interface-design/system.md`, `docs/ARCHITECTURE.md` e o pedido atual.
 
-O painel não é ferramenta de compliance, observabilidade de repositórios, demonstrador de regras, leitor de metadados ou dashboard corporativo.
+## Fonte de contexto e segurança
 
-## Fontes e prioridade
-
-Antes de implementar, leia somente os documentos necessários. Em conflito, siga: `docs/PRODUCT.md`, `docs/MVP.md`, a referência em `docs/references/`, `.interface-design/system.md`, `docs/ARCHITECTURE.md` e o pedido atual.
-
-## Escopo e linguagem
-
-- Priorize ações reais do usuário, com português natural e direto.
-- O MVP local-first abrange projetos, avanços, próximas ações, pendências, decisões, bloqueios, marcos, histórico, relatórios e importação/exportação.
-- Não integrar GitHub, n8n, `teo-contexto`, APIs, autenticação, backend, banco remoto, IA ou deploy.
-- Separe domínio, persistência e interface; trate falhas locais; não armazene credenciais; preserve exportações com migrações explícitas.
+- `TeoZ08/teo-contexto`, branch `main`, é a fonte canônica de contexto; o painel recebe apenas um snapshot JSON público e versionado em build.
+- O browser não chama GitHub e não recebe token. Nunca registre, imprima ou versione credenciais, `.env`, chaves, tokens, URLs privadas ou Markdown bruto da fonte.
+- Dados locais prevalecem para operação: snapshot novo não pode apagar avanços, ações, pendências, decisões, bloqueios, marcos ou histórico.
+- O changeset é somente uma proposta baixável para revisão humana; não há escrita automática em `teo-contexto`.
 
 ## Interface e validação
 
-- Consulte a referência, as notas visuais e o sistema de interface antes de mudanças visuais.
-- Garanta teclado, telas pequenas, foco visível e estados que não dependam apenas de cor.
-- Após mudanças relevantes, execute os scripts aplicáveis de typecheck, lint, test e build, além de `git diff --check`, `git status` e `git diff`.
+- Preserve o clima mineral escuro e o foco de trabalho; a referência de dashboard serve apenas para estrutura compacta de navegação, listas e controles.
+- Garanta teclado, foco visível, estados além da cor e o fluxo em 390 px.
+- Após mudanças relevantes, execute typecheck, lint, test, build, `git diff --check`, `git status` e `git diff`.

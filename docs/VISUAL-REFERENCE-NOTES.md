@@ -1,21 +1,14 @@
-# Notas da referência visual
+# Notas visuais
 
-## Observado
+## Direção aprovada
 
-A referência é uma textura abstrata, escura e orgânica: malha irregular quase mineral, preto profundo e veios luminosos em ciano, azul, violeta e magenta. A sensação é íntima, técnica sem ser corporativa e artesanal. A profundidade vem do contraste e de agrupamentos, não de cartões repetidos.
+O painel combina a textura mineral orgânica da referência original — preto profundo, ciano, azul, violeta e magenta em uso contido — com a eficiência estrutural das referências de Project Management Dashboard: controles agrupados, listas legíveis e ações compactas. O resultado é um caderno de trabalho noturno, não uma cópia de dashboard branco ou corporativo.
 
-## Tradução
+## Aplicação
 
-- Base escura e silenciosa para foco em registros.
-- Ciano para ação e avanço; violeta para contexto; magenta apenas como destaque secundário. Estados continuam com texto e ícone, não apenas cor.
-- A textura é assinatura discreta de navegação, cabeçalho ou estado vazio, com opacidade baixa; nunca fica atrás de texto longo ou controles.
-- Superfícies sólidas, bordas sutis e ritmo vertical substituem grades de cards idênticos.
-- Desktop usa contexto lateral e coluna de trabalho; mobile prioriza ação, situação e próxima ação antes de seções secundárias.
+- Ciano comunica avanço e ação; violeta comunica contexto; magenta é alerta secundário.
+- A textura entra apenas em baixa opacidade, sem comprometer leitura ou controles.
+- A home prioriza lista de projetos e próxima ação; atualizações e bloqueios são suporte lateral.
+- Em telas pequenas, a ação principal, situação e próxima ação vêm antes das áreas secundárias.
 
-## Estrutura proposta
-
-Na home, barra compacta com navegação e `Registrar atualização`; projetos e próximas ações no centro, atualizações e bloqueios como apoio. No detalhe, situação, última atualização e próxima ação aparecem primeiro; os registros entram em seguida.
-
-## Rejeitado
-
-Não copiar marca, conteúdo, imagem literal, formato vertical extremo ou textura como estrutura. Não transformar a aplicação em um painel neon decorativo: contraste, foco e hierarquia têm precedência.
+Os recortes de referência ficam em `docs/references/project-management-dashboard/`; são referência interna, não ativos copiados para a interface.

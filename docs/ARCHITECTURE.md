@@ -1,25 +1,17 @@
 # Arquitetura — teo-painel
 
-## Stack e limites
+## Camadas
 
-Aplicação local-first em Vite, React e TypeScript, com Vitest e Testing Library. Sem backend, variáveis de ambiente ou serviços externos no MVP.
+- `scripts/sync-teo-contexto.mjs`: parser Node executado no build; lê somente `main` e publica o contrato `schemaVersion: 1`.
+- `public/data/teo-contexto.snapshot.json`: artefato estático sanitizado e revisável.
+- `src/context-source/`: validação, cache offline, merge idempotente e changeset.
+- `src/domain/` e `src/persistence/`: regras e backup do workspace local.
+- `src/components/` e `src/App.tsx`: experiência React.
 
-Separar domínio (tipos e regras), persistência (leitura, validação, migração, backup e escrita) e interface (rotas, formulários e componentes).
+## Precedência e falha
 
-## Entidades
+O snapshot cria a base de projetos que ainda não existem no workspace. Registros locais ganham para tudo o que é operacional; o snapshot continua como contexto de leitura. O changeset inclui esses registros locais também para projetos que nasceram da fonte canônica. Se a busca falhar, o último snapshot validado no `localStorage` é usado; se não existir, o painel ainda preserva todos os registros locais.
 
-`Project`, `ProgressUpdate`, `NextAction`, `PendingItem`, `Decision`, `Blocker`, `Milestone`, `HistoryEvent` e `WorkspaceSettings`. Todos os registros têm IDs estáveis e timestamps. Eventos registram uma ação legível e referenciam o item de origem, mas não são a fonte única dos dados.
+## Deploy
 
-## Persistência e schema
-
-Um documento versionado em `localStorage`, na chave `teo-painel.workspace`, conterá `schemaVersion`, configurações e coleções. A primeira execução cria workspace vazio seguro. Leituras inválidas não sobrescrevem o valor original. A escrita valida a serialização antes de substituir o valor atual.
-
-A importação valida formato, versão, IDs e relações antes de alterar o workspace. Antes de uma importação destrutiva, uma cópia do valor atual é preservada numa chave de backup versionada. Cada mudança terá função explícita e testada de `vN` para `vN+1`.
-
-## Exportação, relatório e testes
-
-O JSON exportado inclui versão de schema, data e documento do workspace. O relatório é determinístico e usa apenas informações registradas. Cobrir regras de domínio, persistência, migrações, importação/exportação e fluxos críticos de interface.
-
-## Futuro, não implementado
-
-Uma integração com `teo-contexto` poderá consumir ou publicar exportações versionadas por adaptador separado; domínio e formato local não dependem dela.
+GitHub Actions pode fazer checkout privado de `teo-contexto` apenas quando `TEO_CONTEXTO_READ_TOKEN` existe no runner. Sem ele, gera-se o site com o snapshot já commitado. O token não é exposto ao build cliente, aos logs ou ao Pages.

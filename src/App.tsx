@@ -1,8 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { addProgressUpdate, createEmptyWorkspace, createProject, deleteProject, setNextAction, setProjectStatus, updateProject, type Project, type Workspace } from './domain/workspace'
 import { ProjectDetail } from './components/ProjectDetail'
 import { ReportPanel } from './components/ReportPanel'
 import { BACKUP_KEY, WORKSPACE_KEY, exportWorkspace, importWorkspace, loadWorkspace, saveWorkspace } from './persistence/storage'
+import { changesetAsMarkdown } from './context-source/changeset'
+import { loadContextSnapshot } from './context-source/loadSnapshot'
+import { contextForLocalProject, mergeSnapshotIntoWorkspace } from './context-source/mergeWorkspace'
+import type { TeoContextSnapshot } from './context-source/types'
 
 interface InitialWorkspaceState { workspace: Workspace; recoveryError: string | null }
 
@@ -21,12 +25,29 @@ export function App() {
   const [search, setSearch] = useState('')
   const [showArchived, setShowArchived] = useState(false)
   const [message, setMessage] = useState('')
+  const [snapshot, setSnapshot] = useState<TeoContextSnapshot | null>(null)
+  const [snapshotStatus, setSnapshotStatus] = useState<'loading' | 'live' | 'cached' | 'unavailable'>('loading')
   const importInput = useRef<HTMLInputElement>(null)
 
   const commit = (next: Workspace) => {
     saveWorkspace(window.localStorage, next)
     setWorkspace(next)
   }
+
+  useEffect(() => {
+    let active = true
+    void loadContextSnapshot().then(({ snapshot: nextSnapshot, cached }) => {
+      if (!active) return
+      setSnapshot(nextSnapshot)
+      setSnapshotStatus(cached ? 'cached' : 'live')
+      setWorkspace((previous) => {
+        const merged = mergeSnapshotIntoWorkspace(previous, nextSnapshot)
+        if (merged.projects.length !== previous.projects.length) saveWorkspace(window.localStorage, merged)
+        return merged
+      })
+    }).catch(() => { if (active) setSnapshotStatus('unavailable') })
+    return () => { active = false }
+  }, [])
 
   const handleSave = (name: string, situation: string) => {
     const isEditingExistingProject = editing !== null && editing !== 'new'
@@ -56,6 +77,17 @@ export function App() {
     setMessage('Exportação preparada.')
   }
 
+  const downloadChangeset = () => {
+    const blob = new Blob([changesetAsMarkdown(workspace, snapshot)], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `teo-painel-changeset-${new Date().toISOString().slice(0, 10)}.md`
+    link.click()
+    URL.revokeObjectURL(url)
+    setMessage('Changeset local preparado para revisão; nenhuma alteração foi enviada ao repositório de contexto.')
+  }
+
   const selectedProject = workspace.projects.find((project) => project.id === selectedProjectId) ?? null
   const visibleProjects = workspace.projects.filter((project) => (showArchived ? project.status === 'archived' : project.status === 'active') && project.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()))
   const recentUpdates = [...workspace.progressUpdates].sort((a, b) => b.occurredOn.localeCompare(a.occurredOn)).slice(0, 5)
@@ -65,13 +97,14 @@ export function App() {
 
   return (
     <main className="app-shell">
-      <header className="app-header"><div><p className="eyebrow">teo-painel</p><h1>O que pede atenção agora?</h1></div><div className="header-actions">{workspace.projects.length > 0 && <button onClick={() => setShowQuickUpdate(true)}>Registrar atualização</button>}<button className={workspace.projects.length === 0 ? '' : 'secondary'} onClick={() => setEditing('new')}>Criar projeto</button></div></header>
+      <header className="app-header"><div><p className="eyebrow">teo-painel · contexto pessoal</p><h1>O que pede atenção agora?</h1></div><div className="header-actions">{workspace.projects.length > 0 && <button onClick={() => setShowQuickUpdate(true)}>Registrar atualização</button>}<button className={workspace.projects.length === 0 ? '' : 'secondary'} onClick={() => setEditing('new')}>Criar projeto</button></div></header>
       <p className="helper">Atualize o que avançou, deixe o próximo passo claro e consulte o restante quando precisar.</p>
+      {snapshotStatus !== 'loading' && <p className="context-status" role="status">{snapshotStatus === 'live' ? 'Contexto atualizado.' : snapshotStatus === 'cached' ? 'Usando cópia local do contexto.' : 'Contexto indisponível; seus registros locais continuam seguros.'}</p>}
       {message && <p className="notice" role="status">{message}</p>}
       {editing && <ProjectForm project={editing === 'new' ? null : editing} onSave={handleSave} onCancel={() => setEditing(null)} />}
       {showQuickUpdate && <QuickUpdate projects={workspace.projects.filter((project) => project.status === 'active')} onCancel={() => setShowQuickUpdate(false)} onSave={(projectId, description, nextAction) => { let next = addProgressUpdate(workspace, projectId, { description }); if (nextAction.trim()) next = setNextAction(next, projectId, { description: nextAction }); commit(next); setShowQuickUpdate(false); setSelectedProjectId(projectId); setMessage('Atualização registrada.') }} />}
-      {!selectedProject && <><section className="home-controls"><label>Buscar projeto<input value={search} placeholder="Buscar pelo nome" onChange={(event) => setSearch(event.target.value)} /></label><div><button className="secondary" onClick={() => setShowArchived(!showArchived)}>{showArchived ? 'Ver projetos ativos' : 'Ver arquivados'}</button><details><summary>Dados</summary><div><button className="secondary" onClick={download}>Exportar JSON</button><button className="secondary" onClick={() => importInput.current?.click()}>Importar JSON</button><input ref={importInput} aria-label="Selecionar arquivo para importar" type="file" accept="application/json" hidden onChange={(event) => void handleImport(event.target.files?.[0])} /></div></details></div></section><div className="home-grid"><section aria-labelledby="project-list-title"><div className="section-heading"><h2 id="project-list-title">{showArchived ? 'Projetos arquivados' : 'Projetos'}</h2><span>{visibleProjects.length} visíveis</span></div>{visibleProjects.length === 0 ? workspace.projects.length === 0 ? <div className="empty-start"><p>Comece criando um projeto e registre o primeiro avanço quando ele acontecer.</p></div> : <p className="empty">Nenhum projeto encontrado.</p> : <ul className="project-list">{visibleProjects.map((project) => { const next = workspace.nextActions.find((item) => item.projectId === project.id && !item.completedAt && !item.replacedAt); return <li key={project.id}><article><div className="project-card-heading"><h3>{project.name}</h3><small>{project.status === 'active' ? 'Ativo' : 'Arquivado'}</small></div><p>{project.currentSituation}</p><p className="next-label">Próxima ação <strong>{next?.description ?? 'Ainda não definida'}</strong></p><div><button className="secondary" onClick={() => setSelectedProjectId(project.id)}>Abrir</button><button className="secondary" onClick={() => setEditing(project)}>Editar</button><button className="secondary" onClick={() => { commit(setProjectStatus(workspace, project.id, project.status === 'active' ? 'archived' : 'active')); setMessage(project.status === 'active' ? 'Projeto arquivado.' : 'Projeto reativado.') }}>{project.status === 'active' ? 'Arquivar' : 'Reativar'}</button><button className="danger" onClick={() => { if (window.confirm(`Excluir “${project.name}”? Esta ação remove os registros ligados a ele.`)) { commit(deleteProject(workspace, project.id)); setMessage('Projeto excluído.') } }}>Excluir</button></div></article></li> })}</ul>}</section><aside className="home-aside"><section><h2>Atualizações recentes</h2>{recentUpdates.length ? <ul className="compact-list">{recentUpdates.map((item) => <li key={item.id}><strong>{workspace.projects.find((project) => project.id === item.projectId)?.name ?? 'Projeto removido'}</strong><span>{item.description}</span></li>)}</ul> : <p className="empty">Nenhuma atualização registrada.</p>}</section><section><h2>Bloqueios ativos</h2>{activeBlockers.length ? <ul className="compact-list blockers">{activeBlockers.map((item) => <li key={item.id}>{item.description}</li>)}</ul> : <p className="empty">Nenhum bloqueio ativo.</p>}</section></aside></div></>}
-      {selectedProject && (showReport ? <ReportPanel workspace={workspace} project={selectedProject} onClose={() => setShowReport(false)} /> : <ProjectDetail workspace={workspace} project={selectedProject} onClose={() => setSelectedProjectId(null)} onOpenReport={() => setShowReport(true)} onCommit={(next, nextMessage) => { commit(next); setMessage(nextMessage) }} />)}
+      {!selectedProject && <><section className="home-controls"><label>Buscar projeto<input value={search} placeholder="Buscar pelo nome" onChange={(event) => setSearch(event.target.value)} /></label><div><button className="secondary" onClick={() => setShowArchived(!showArchived)}>{showArchived ? 'Ver projetos ativos' : 'Ver arquivados'}</button><details><summary>Dados</summary><div><button className="secondary" onClick={download}>Exportar JSON</button><button className="secondary" onClick={downloadChangeset}>Baixar changeset</button><button className="secondary" onClick={() => importInput.current?.click()}>Importar JSON</button><input ref={importInput} aria-label="Selecionar arquivo para importar" type="file" accept="application/json" hidden onChange={(event) => void handleImport(event.target.files?.[0])} /></div></details></div></section><div className="home-grid"><section aria-labelledby="project-list-title"><div className="section-heading"><h2 id="project-list-title">{showArchived ? 'Projetos arquivados' : 'Projetos'}</h2><span>{visibleProjects.length} visíveis</span></div>{visibleProjects.length === 0 ? workspace.projects.length === 0 ? <div className="empty-start"><p>Comece criando um projeto e registre o primeiro avanço quando ele acontecer.</p></div> : <p className="empty">Nenhum projeto encontrado.</p> : <ul className="project-list">{visibleProjects.map((project) => { const next = workspace.nextActions.find((item) => item.projectId === project.id && !item.completedAt && !item.replacedAt); const context = contextForLocalProject(snapshot, project.id); return <li key={project.id}><article><div className="project-card-heading"><h3>{project.name}</h3><small>{project.status === 'active' ? 'Ativo' : 'Arquivado'}</small></div><p>{project.currentSituation}</p><p className="next-label">Próxima ação <strong>{next?.description ?? context?.canonicalNextAction ?? 'Ainda não definida'}</strong></p>{context?.source.url && <a className="source-link" href={context.source.url} target="_blank" rel="noreferrer">Ver fonte de contexto</a>}<div><button className="secondary" onClick={() => setSelectedProjectId(project.id)}>Abrir</button><button className="secondary" onClick={() => setEditing(project)}>Editar</button><button className="secondary" onClick={() => { commit(setProjectStatus(workspace, project.id, project.status === 'active' ? 'archived' : 'active')); setMessage(project.status === 'active' ? 'Projeto arquivado.' : 'Projeto reativado.') }}>{project.status === 'active' ? 'Arquivar' : 'Reativar'}</button><button className="danger" onClick={() => { if (window.confirm(`Excluir “${project.name}”? Esta ação remove os registros ligados a ele.`)) { commit(deleteProject(workspace, project.id)); setMessage('Projeto excluído.') } }}>Excluir</button></div></article></li> })}</ul>}</section><aside className="home-aside"><section><h2>Atualizações recentes</h2>{recentUpdates.length ? <ul className="compact-list">{recentUpdates.map((item) => <li key={item.id}><strong>{workspace.projects.find((project) => project.id === item.projectId)?.name ?? 'Projeto removido'}</strong><span>{item.description}</span></li>)}</ul> : <p className="empty">Nenhuma atualização registrada.</p>}</section><section><h2>Bloqueios ativos</h2>{activeBlockers.length ? <ul className="compact-list blockers">{activeBlockers.map((item) => <li key={item.id}>{item.description}</li>)}</ul> : <p className="empty">Nenhum bloqueio ativo.</p>}</section></aside></div></>}
+      {selectedProject && (showReport ? <ReportPanel workspace={workspace} project={selectedProject} onClose={() => setShowReport(false)} /> : <ProjectDetail workspace={workspace} project={selectedProject} context={contextForLocalProject(snapshot, selectedProject.id)} onClose={() => setSelectedProjectId(null)} onOpenReport={() => setShowReport(true)} onCommit={(next, nextMessage) => { commit(next); setMessage(nextMessage) }} />)}
     </main>
   )
 }
