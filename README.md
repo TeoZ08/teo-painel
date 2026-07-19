@@ -13,7 +13,7 @@ Painel pessoal e local-first para registrar avanços, manter próximas ações c
 
 ## O que não faz
 
-Não há login, backend, banco remoto, integração com GitHub, n8n ou `teo-contexto`, sincronização automática, IA ou deploy.
+Não há login, backend, banco remoto, integração com GitHub, n8n ou `teo-contexto`, sincronização automática, IA ou deploy alternativo.
 
 ## Desenvolvimento local
 
@@ -29,6 +29,8 @@ Abra o endereço exibido pelo Vite, normalmente `http://localhost:5173`.
 ## GitHub Pages
 
 O workflow `.github/workflows/deploy-pages.yml` gera e publica esta aplicação no GitHub Pages quando há push na `main` ou na branch de reconstrução. A base do Vite já considera a URL de projeto `/teo-painel/`.
+
+O repositório precisa estar em um plano que ofereça GitHub Pages para repositórios privados, ou tornar-se público, antes de o deploy poder ser habilitado.
 
 ## Validações
 
