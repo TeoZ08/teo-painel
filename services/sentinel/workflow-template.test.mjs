@@ -12,6 +12,7 @@ describe('template sanitizado do workflow da Sentinela', () => {
     expect(node('Iniciar às 22:30').parameters.rule.interval[0].expression).toBe('30 22 * * *')
     expect(node('Abrir janela idempotente').parameters.jsCode).toContain("['22:30', '22:45', '23:00', '23:15', '23:30']")
     expect(node('Aguardar 15 minutos').parameters).toMatchObject({ amount: 15, unit: 'minutes' })
+    expect(node('Selecionar candidato').parameters.jsCode).toContain("$('Preparar próxima consulta').last()")
   })
 
   it('usa a marca de SHA no comentário e não contém ação de merge ou escrita de shell', () => {
@@ -36,6 +37,8 @@ describe('template sanitizado do workflow da Sentinela', () => {
     expect(template.nodes.filter((item) => item.name.includes('Gemini')).length).toBe(2)
     expect(template.nodes.filter((item) => item.name === 'Gemini — revisão principal')).toHaveLength(1)
     expect(node('Groq é necessário?').parameters.conditions.conditions[0].leftValue).toContain("['attention', 'blocked']")
+    expect(template.connections['Groq — segunda opinião'].main[0][0].node).toBe('Conciliar segunda opinião')
+    expect(node('Conciliar segunda opinião').parameters.jsCode).toContain("$('Validar resposta Gemini').first().json")
     expect(source).toContain('maxOutputTokens')
     expect(source).toContain('SENTINEL_GROQ_MAX_INPUT_BYTES')
   })

@@ -58,7 +58,7 @@
       "typeVersion": 2,
       "position": [720, 0],
       "parameters": {
-        "jsCode": "const cycle = $('Abrir janela idempotente').first().json;\nconst candidates = $input.all().map((item) => item.json).filter((pr) => pr && pr.draft === true && pr.base?.ref === 'main' && /^memory\\/\\d{4}-\\d{2}-\\d{2}$/.test(pr.head?.ref ?? '') && pr.head?.sha);\nconst candidate = candidates.length === 1 ? { number: candidates[0].number, head: candidates[0].head.sha, branch: candidates[0].head.ref, title: candidates[0].title } : null;\nreturn [{ json: { ...cycle, candidate, candidateCount: candidates.length, incomplete: candidates.length > 1 } }];"
+        "jsCode": "let cycle;\ntry { cycle = $('Preparar próxima consulta').last().json; } catch { cycle = $('Abrir janela idempotente').first().json; }\nconst candidates = $input.all().map((item) => item.json).filter((pr) => pr && pr.draft === true && pr.base?.ref === 'main' && /^memory\\/\\d{4}-\\d{2}-\\d{2}$/.test(pr.head?.ref ?? '') && pr.head?.sha);\nconst candidate = candidates.length === 1 ? { number: candidates[0].number, head: candidates[0].head.sha, branch: candidates[0].head.ref, title: candidates[0].title } : null;\nreturn [{ json: { ...cycle, candidate, candidateCount: candidates.length, incomplete: candidates.length > 1 } }];"
       }
     },
     {
@@ -277,6 +277,16 @@
       }
     },
     {
+      "id": "normalize-groq",
+      "name": "Conciliar segunda opinião",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3600, -360],
+      "parameters": {
+        "jsCode": "const context = $('Validar resposta Gemini').first().json;\nconst raw = $json.choices?.[0]?.message?.content ?? '';\nlet second; try { second = JSON.parse(raw); } catch { second = null; }\nconst allowed = ['normal', 'attention', 'blocked', 'incomplete'];\nconst differs = allowed.includes(second?.verdict) && second.verdict !== context.review.verdict;\nconst review = differs ? { ...context.review, verdict: 'attention', summary: `${context.review.summary} Segunda opinião divergente: ${String(second.summary ?? 'revisão humana necessária.')}`, requiresHumanReview: true } : context.review;\nreturn [{ json: { ...context, groqUsed: true, review } }];"
+      }
+    },
+    {
       "id": "comment-pr",
       "name": "Comentar PR",
       "type": "n8n-nodes-base.httpRequest",
@@ -358,7 +368,8 @@
     "Gemini — revisão principal": { "main": [[{ "node": "Validar resposta Gemini", "type": "main", "index": 0 }]] },
     "Validar resposta Gemini": { "main": [[{ "node": "Groq é necessário?", "type": "main", "index": 0 }]] },
     "Groq é necessário?": { "main": [[{ "node": "Groq — segunda opinião", "type": "main", "index": 0 }], [{ "node": "Compor resultado sem escrita", "type": "main", "index": 0 }]] },
-    "Groq — segunda opinião": { "main": [[{ "node": "Compor resultado sem escrita", "type": "main", "index": 0 }]] },
+    "Groq — segunda opinião": { "main": [[{ "node": "Conciliar segunda opinião", "type": "main", "index": 0 }]] },
+    "Conciliar segunda opinião": { "main": [[{ "node": "Compor resultado sem escrita", "type": "main", "index": 0 }]] },
     "Compor resultado sem escrita": { "main": [[{ "node": "Comentar PR", "type": "main", "index": 0 }]] },
     "Comentar PR": { "main": [[{ "node": "Aplicar rótulo da Sentinela", "type": "main", "index": 0 }]] },
     "Aplicar rótulo da Sentinela": { "main": [[{ "node": "Atualizar contexto interno", "type": "main", "index": 0 }]] }
