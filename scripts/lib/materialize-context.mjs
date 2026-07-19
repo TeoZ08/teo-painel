@@ -15,15 +15,18 @@ const URL_TEST_PATTERN = /https?:\/\/[^\s)\]]+/i
 
 const runGit = (source, args) => execFileSync('git', ['-C', source, ...args], { encoding: 'utf8' }).trim()
 const checksum = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+const sourceOperation = (code, operation) => {
+  try { return operation() } catch { throw new Error(code) }
+}
 
 export const materializeContext = ({ source, generatedAt = new Date().toISOString() }) => {
-  const origin = runGit(source, ['remote', 'get-url', 'origin'])
-  if (!/TeoZ08\/teo-contexto(?:\.git)?$/.test(origin)) throw new Error('A origem não é o repositório canônico TeoZ08/teo-contexto.')
-  runGit(source, ['fetch', 'origin', 'main'])
-  const commit = runGit(source, ['rev-parse', 'origin/main'])
-  const files = runGit(source, ['ls-tree', '-r', '--name-only', commit]).split('\n').filter(Boolean)
+  const origin = sourceOperation('source_remote_invalid', () => runGit(source, ['remote', 'get-url', 'origin']))
+  if (!/TeoZ08\/teo-contexto(?:\.git)?$/.test(origin)) throw new Error('source_remote_invalid')
+  sourceOperation('source_fetch_failed', () => runGit(source, ['fetch', 'origin', 'main']))
+  const commit = sourceOperation('source_read_failed', () => runGit(source, ['rev-parse', 'origin/main']))
+  const files = sourceOperation('source_read_failed', () => runGit(source, ['ls-tree', '-r', '--name-only', commit])).split('\n').filter(Boolean)
   const warnings = []
-  const read = (path) => runGit(source, ['show', `${commit}:${path}`])
+  const read = (path) => sourceOperation('source_read_failed', () => runGit(source, ['show', `${commit}:${path}`]))
   const projectFiles = files.filter((path) => /^projetos\/[^/]+\.md$/.test(path))
   const projects = projectFiles.map((path) => parseProject(path, read(path), commit, warnings)).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
   const projectIds = new Set(projects.map((project) => project.id))
