@@ -10,11 +10,13 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "sync:teo-contexto": "node scripts/sync-teo-contexto.mjs"
+    "sync:teo-contexto": "node scripts/sync-teo-contexto.mjs",
+    "materialize:context": "node scripts/sync-teo-contexto.mjs"
   },
   "dependencies": {
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -42,12 +42,14 @@ jobs:
           ref: main
           token: ${{ env.HAS_TEO_CONTEXTO_TOKEN }}
           path: external/teo-contexto
-      - name: Refresh public context snapshot
+      - name: Build public fallback bundle
         if: ${{ env.HAS_TEO_CONTEXTO_TOKEN != '' }}
-        run: npm run sync:teo-contexto -- --source external/teo-contexto --output public/data/teo-contexto.snapshot.json
-      - name: Keep committed snapshot when source is unavailable
+        run: npm run materialize:context -- --source external/teo-contexto --output public/fallback.bundle.json
+      - name: Require authorized context source for fallback
         if: ${{ env.HAS_TEO_CONTEXTO_TOKEN == '' }}
-        run: echo '::warning::TEO_CONTEXTO_READ_TOKEN is unavailable; deploying the reviewed committed snapshot.'
+        run: |
+          echo 'A publicação requer TEO_CONTEXTO_READ_TOKEN para gerar fallback.bundle.json.' >&2
+          exit 1
       - name: Build
         run: npm run build
       - name: Configure Pages

@@ -1,6 +1,6 @@
 # teo-painel
 
-Painel pessoal, local-first, para acompanhar projetos reais, registrar avanços e deixar a próxima ação inequívoca. A versão publicada usa um snapshot estático e revisável do repositório privado `TeoZ08/teo-contexto`; não há token, API ou sincronização do GitHub no navegador.
+Painel pessoal, local-first, para acompanhar projetos reais, registrar avanços e deixar a próxima ação inequívoca. A versão publicada recebe datasets JSON públicos e versionados do repositório canônico `TeoZ08/teo-contexto`; não há token, API do GitHub ou contexto privado no navegador.
 
 ## Uso
 
@@ -11,13 +11,26 @@ Painel pessoal, local-first, para acompanhar projetos reais, registrar avanços 
 
 ## Fonte de contexto
 
-O arquivo publicado em `public/data/teo-contexto.snapshot.json` contém somente dados públicos, estruturados e sanitizados. É gerado no build com:
+O materializador fixa `origin/main` em um SHA imutável e publica somente estes datasets sanitizados:
 
 ```sh
-npm run sync:teo-contexto -- --source ../teo-contexto --output public/data/teo-contexto.snapshot.json
+/v1/manifest.json
+/v1/projects.json
+/v1/daily.json
+/v1/reviews.json
+/v1/pipeline.json
+/v1/quality.json
 ```
 
-O parser lê `main`, entende front matter simples e headings Markdown como fallback. Não copie Markdown bruto, `.env`, credenciais, tokens, chaves ou links privados para o snapshot.
+O fallback completo `fallback.bundle.json` é gerado exclusivamente no build do GitHub Pages:
+
+```sh
+npm run materialize:context -- --source ../teo-contexto --output public/fallback.bundle.json
+```
+
+O parser usa YAML v2 e fallback legado com warning. Ele não copia Markdown bruto, `.env`, credenciais, tokens, chaves, cookies, backups, bancos locais ou URLs privadas para os artefatos públicos.
+
+No navegador, a ordem de degradação é: VPS → cache validado do navegador → fallback do GitHub Pages.
 
 ## Desenvolvimento e validação
 
@@ -25,7 +38,7 @@ Requer Node.js 20 ou superior.
 
 ```sh
 npm install
-npm run sync:teo-contexto -- --source ../teo-contexto --output public/data/teo-contexto.snapshot.json
+npm run materialize:context -- --source ../teo-contexto --output public/fallback.bundle.json
 npm run dev
 npm run typecheck
 npm run lint
@@ -35,6 +48,6 @@ npm run build
 
 ## GitHub Pages
 
-O workflow publica a partir da `main`, pode ser disparado manualmente e tenta atualizar o snapshot a cada 6 horas. Quando o secret `TEO_CONTEXTO_READ_TOKEN` não está disponível, o deploy usa o snapshot revisado que já está commitado. O secret é usado apenas no runner, nunca no artefato estático.
+O workflow publica a partir da `main`, pode ser disparado manualmente e reconstrói o fallback durante o build. `TEO_CONTEXTO_READ_TOKEN` é necessário somente no runner para fazer checkout da fonte canônica; sem ele, o deploy falha em vez de publicar uma versão sem fallback válido. O secret nunca chega ao artefato estático.
 
 Dados operacionais ficam em `localStorage` (`teo-painel.workspace`). A importação valida o formato antes de gravar e preserva uma cópia local do estado anterior.
