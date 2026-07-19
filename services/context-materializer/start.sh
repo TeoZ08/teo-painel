@@ -1,6 +1,8 @@
 #!/bin/sh
 set -eu
 
+git config --global --add safe.directory "${CONTEXT_SOURCE:-/data/repo}"
+
 if [ -n "${CONTEXT_SOURCE_READ_TOKEN:-}" ]; then
   cat > /tmp/git-askpass <<'EOF'
 #!/bin/sh
